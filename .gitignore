@@ -1,2 +1,5 @@
-go-emu
+# binary executable from build
+gameboy-emulator
+
+# temporary files
 *.*~

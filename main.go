@@ -1,98 +1,75 @@
 package main
 
 import (
-	"fmt"
-	_ "image/png"
+	"image/color"
+	"log"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
-var opcodes = [5]string{"0x00", "0xC3", "0x3E", "0xE0", "0x76"}
+var WIDTH float32 = 640
+var HEIGHT float32 = 576
 
-type CPU struct {
-	A      byte   // accumulator register - used for arithmetic and logical operations
-	PC     uint16 // program counter - points to the next instruction to execute
-	Halted bool   // indicates if the CPU is halted - if true, the CPU will not execute any instructions
+func add(a, b int) int {
+	return a + b
 }
 
-type MMU struct {
-	memory [0x10000]byte // 64KB of memory - 0x10000 is 65536 bytes in hexadecimal - in 'go' this `memory [0x10000]byte` denotes an array of length 65536
+type Game struct {
+	gb GameBoy
 }
 
-/*
-This is what the full picture of the Memory Map will look like: (with some unusable spaces in between that i did not write down. also sizes may be off, i wrote them by hand)
-type MMU struct {
-  ROM_0 [0x4000]byte // ROM bank 0 (fixed, 16kb) - R
-  ROM_1-N [0x4000]byte // ROM Bank 1-N (switchable, 16kb) - R
-  VRAM [0x2000]byte // Video RAM (8kb) - R/W
-  EXT_RAM [0x2000]byte // External RAM (cartridge, 8kb) - R/W
-  WRAM [0x2000]byte // Work RAM - R/W
-  OAM [0x00EF]byte // Sprite attributes (160B) - R/W
-  IO_REG [0x00CF]byte // I/O Registers (128B) - varies
-  HRAM [0x00CE]byte // High RAM (127B) - R/W
-  IE [0x0001]byte // Interrupt Enable (IE) - R/W
-}
-*/
-
-func (m *MMU) Read(address uint16) byte {
-	return m.memory[address] // return the value at the address
-}
-
-func (m *MMU) Write(address uint16, value byte) {
-	if address < 0x8000 {
-		return // ROM is read-only - ignore writes
+func (g *Game) Update() error {
+	if g.gb.CPU.Halted {
+		return nil
 	}
-	// When we use the complete MMU struct written above, we should have many more if statements to control where the value is written
-	m.memory[address] = value
+
+	// Approximate DMG CPU budget per frame (4194304 / 59.7 ~= 70224 T-cycles).
+	const targetCyclesPerFrame = 70224
+	cyclesThisFrame := 0
+
+	for cyclesThisFrame < targetCyclesPerFrame && !g.gb.CPU.Halted {
+		cyclesThisFrame += g.gb.Step()
+	}
+
+	return nil
 }
 
-type GameBoy struct {
-	CPU CPU
-	MMU MMU
+func (g *Game) Draw(screen *ebiten.Image) {
+	bgp := g.gb.MMU.Read(0xFF47)
+	background := colorFromBGPColor0(bgp)
+	screen.Fill(background)
 }
 
-func (gb *GameBoy) Step() int {
-	// FETCH
-	opcode := gb.MMU.Read(gb.CPU.PC)
-	gb.CPU.PC++
+func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
+	return int(WIDTH), int(HEIGHT)
+}
 
-	// DECODE
-	// inside each case: EXECUTE
-	switch opcode {
-	case 0x00: // NOP
-		return 4
+func colorFromBGPColor0(bgp byte) color.RGBA {
+	color0 := bgp & 0x03
 
-	case 0x3E: // LD A, n
-		// program counter points to a memory address. take the value on that address (n) and put it in the accumulator register (A)
-		gb.CPU.A = gb.MMU.Read(gb.CPU.PC)
-		// increment program counter so it points to the next memory address
-		gb.CPU.PC++
-		return 8
-
-	case 0x76: // HALT - don't do anything for 4 cpu cycles
-		gb.CPU.Halted = true
-		return 4
-
-	case 0xC3: // JP nn - jump to address nn. the address that the cpu should jump to is stored in the next two addresses.
-		lo := gb.MMU.Read(gb.CPU.PC)           // e.g 0x50
-		hi := gb.MMU.Read(gb.CPU.PC + 1)       // e.g. 0x01
-		gb.CPU.PC = uint16(hi)<<8 | uint16(lo) // this returns 0x0150. analysis:
-		/*
-			|-| hi = 0x01
-			|-| lo = 0x50
-			|-| uint16(hi)<<8 -> this turns 0x01 to 0x0100 (left shift by 8 bits) ->  this will become the left part of the bitwise OR operation between it and the value at the next address, which in this example is 0x50.
-			|-| uint16(lo) -> this is 0x50
-			|-| | -> bitwise OR operation
-			|-| gb.CPU.PC = 0x0150 (0x01 comes first because it is first in memory: this is the little-endian architecture)
-			**/
-
-		return 16
-
-	case 0xE0: // LDH (n), A
-		offset := gb.MMU.Read(gb.CPU.PC)
-		gb.CPU.PC++
-		gb.MMU.Write(0xFF00+uint16(offset), gb.CPU.A)
-		return 12
-
+	switch color0 {
+	case 0:
+		return color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
+	case 1:
+		return color.RGBA{R: 0xAA, G: 0xAA, B: 0xAA, A: 0xFF}
+	case 2:
+		return color.RGBA{R: 0x55, G: 0x55, B: 0x55, A: 0xFF}
 	default:
-		panic(fmt.Sprintf("Unknown opcode: 0x%02X", opcode))
+		return color.RGBA{R: 0x00, G: 0x00, B: 0x00, A: 0xFF}
+	}
+}
+
+func main() {
+	ebiten.SetWindowSize(int(WIDTH), int(HEIGHT))
+	ebiten.SetWindowTitle("GameBoy Emulator")
+
+	gb := NewGameBoy()
+	if err := gb.MMU.LoadROM("roms/minimal.gb"); err != nil {
+		log.Fatal(err)
+	}
+
+	game := &Game{gb: gb}
+	if err := ebiten.RunGame(game); err != nil {
+		log.Fatal(err)
 	}
 }
