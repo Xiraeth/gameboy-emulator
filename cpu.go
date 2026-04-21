@@ -5,7 +5,21 @@ import (
 	"os"
 )
 
-var opcodes = [5]string{"0x00", "0xC3", "0x3E", "0xE0", "0x76"}
+const (
+	OpNOP    byte = 0x00
+	OpJPa16  byte = 0xC3
+	OpLDAd8  byte = 0x3E
+	OpLDHa8A byte = 0xE0
+	OpHALT   byte = 0x76
+)
+
+var opcodeNames = map[byte]string{
+	OpNOP:    "NOP",
+	OpJPa16:  "JP a16",
+	OpLDAd8:  "LD A, d8",
+	OpLDHa8A: "LDH (a8), A",
+	OpHALT:   "HALT",
+}
 
 type CPU struct {
 	A      byte   // accumulator register - used for arithmetic and logical operations
@@ -56,21 +70,21 @@ func (gb *GameBoy) Step() int {
 	// DECODE
 	// inside each case: EXECUTE
 	switch opcode {
-	case 0x00: // NOP
+	case OpNOP: // NOP
 		return 4
 
-	case 0x3E: // LD A, n
+	case OpLDAd8: // LD A, n
 		// program counter points to a memory address. take the value on that address (n) and put it in the accumulator register (A)
 		gb.CPU.A = gb.MMU.Read(gb.CPU.PC)
 		// increment program counter so it points to the next memory address
 		gb.CPU.PC++
 		return 8
 
-	case 0x76: // HALT - don't do anything for 4 cpu cycles
+	case OpHALT: // HALT - don't do anything for 4 cpu cycles
 		gb.CPU.Halted = true
 		return 4
 
-	case 0xC3: // JP nn - jump to address nn. the address that the cpu should jump to is stored in the next two addresses.
+	case OpJPa16: // JP nn - jump to address nn. the address that the cpu should jump to is stored in the next two addresses.
 		lo := gb.MMU.Read(gb.CPU.PC)           // e.g 0x50
 		hi := gb.MMU.Read(gb.CPU.PC + 1)       // e.g. 0x01
 		gb.CPU.PC = uint16(hi)<<8 | uint16(lo) // this returns 0x0150. analysis:
@@ -85,15 +99,22 @@ func (gb *GameBoy) Step() int {
 
 		return 16
 
-	case 0xE0: // LDH (n), A
+	case OpLDHa8A: // LDH (n), A
 		offset := gb.MMU.Read(gb.CPU.PC)
 		gb.CPU.PC++
 		gb.MMU.Write(0xFF00+uint16(offset), gb.CPU.A)
 		return 12
 
 	default:
-		panic(fmt.Sprintf("Unknown opcode: 0x%02X", opcode))
+		panic(fmt.Sprintf("Unknown opcode: 0x%02X (%s)", opcode, opcodeName(opcode)))
 	}
+}
+
+func opcodeName(opcode byte) string {
+	if name, exists := opcodeNames[opcode]; exists {
+		return name
+	}
+	return "UNKNOWN"
 }
 
 func NewGameBoy() GameBoy {
