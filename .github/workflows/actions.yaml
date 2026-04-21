@@ -25,6 +25,19 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
+      - name: Install Linux deps for Ebiten
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libxi-dev \
+            libxrandr-dev \
+            libxxf86vm-dev \
+            libgl1-mesa-dev
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
@@ -45,6 +58,19 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
+
+      - name: Install Linux deps for Ebiten
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libxi-dev \
+            libxrandr-dev \
+            libxxf86vm-dev \
+            libgl1-mesa-dev
 
       - name: Verify dependencies
         run: go mod verify

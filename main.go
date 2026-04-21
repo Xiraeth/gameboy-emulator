@@ -35,6 +35,15 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
+	lcdc := g.gb.MMU.Read(0xFF40)
+	lcdEnabled := (lcdc & 0x80) != 0 // this is the 7th bit in the LCDC register. bit 7 controls the LCD on/off state. if it is 0, the LCD is off.
+	if !lcdEnabled {
+		// LCD off behavior (which on DMG is displayed as a white "whiter" than color #0. here it is the same, for simplicity)
+		screen.Fill(color.RGBA{0xFF, 0xFF, 0xFF, 0xFF})
+		return
+	}
+
+	// LCD on: render using palette/BGP
 	bgp := g.gb.MMU.Read(0xFF47)
 	background := colorFromBGPColor0(bgp)
 	screen.Fill(background)
